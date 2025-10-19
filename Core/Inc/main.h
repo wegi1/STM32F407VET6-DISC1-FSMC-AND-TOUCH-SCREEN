@@ -64,6 +64,8 @@ extern uint8_t idx[];
 /* Private defines -----------------------------------------------------------*/
 #define LCDTP_IRQ_Pin GPIO_PIN_2
 #define LCDTP_IRQ_GPIO_Port GPIOE
+#define BTN_Pin GPIO_PIN_0
+#define BTN_GPIO_Port GPIOA
 #define LCD_BL_Pin GPIO_PIN_0
 #define LCD_BL_GPIO_Port GPIOB
 #define LCDTP_CLK_Pin GPIO_PIN_1

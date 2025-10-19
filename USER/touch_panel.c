@@ -16,28 +16,25 @@
 #include "touch_panel.h"
 #include "GUI.h"
 
-
-
-
-
-
 /* Private variables ---------------------------------------------------------*/
 //Matrix matrix ;
 Matrix  matrix = {
 
+#define NOHARDWARE_SPI // if Hardware SPI exists - change definition to "HARDWARE_SPI"
 
-#define OLD_LCD
+#define OLD_LCD // definition of use old or new LCD
+
 #ifdef OLD_LCD
 //--------------------------------------
 //- for old ILI9341 LCD TS BLACK BOARD -
 //--------------------------------------
-		0x0001DD80 ,
-		0xFFFFFD80 ,
-		0xFFB6E000 ,
-		0x0000014A ,
-		0x00016E18 ,
-		0xFFCB1A0C ,
-		0x00059380
+		0x0002C6F0 ,
+		0xFFFFF9E8 ,
+		0xFF9A0DB8 ,
+		0xFFFFFD30 ,
+		0x00022470 ,
+		0xFFB7D780 ,
+		0x000854B8
 #else
 //--------------------------------------
 //- for new ILI9341 LCD TS BLACK BOARD -
@@ -54,12 +51,16 @@ Matrix  matrix = {
 Coordinate  display ;
 
 
-Coordinate ScreenSample[3];
+Coordinate ScreenSample[3] = {
+								{129 , 162},
+								{915 , 150},
+								{525 , 860}
+};
 
 Coordinate DisplaySample[3] = {
-                                {30, 45},
-                                {220, 45},
-                                {160,210}
+                                {30  , 30},
+                                {290 , 30},
+                                {160 , 210}
                               };
 
 /* Private define ------------------------------------------------------------*/
@@ -84,7 +85,7 @@ void DelayUS(uint16_t value)
 	while((TIM4->SR &1) == 0 ) {;} // wait for event flag
 	TIM4->CR1 = 0;
 }
-#define NOHARDWARE_SPI // if Hardware SPI exists - change definition to "HARDWARE_SPI"
+
 
 #ifdef HARDWARE_SPI
 extern SPI_HandleTypeDef hspi2;
@@ -463,17 +464,77 @@ FunctionalState getDisplayPoint(Coordinate * displayPtr,
 } 
 
 //***********************************************************************************************
+static void releasse_wait(void) {
+	// wait for releasse button key and touch screen
+	while((HAL_GPIO_ReadPin(LCDTP_IRQ_GPIO_Port, LCDTP_IRQ_Pin)) == 0);
+	while((HAL_GPIO_ReadPin(BTN_GPIO_Port, BTN_Pin)) == 1);
+}
+static void press_wait(void) {
+	uint8_t test = 0;
 
-static void print_data( int32_t data) {
+	HAL_Delay(100);
+	// wait for press button key or touch screen
+	while(test == 0) {
+		if((HAL_GPIO_ReadPin(LCDTP_IRQ_GPIO_Port, LCDTP_IRQ_Pin)) == 0) { test = 1 ;}
+		if((HAL_GPIO_ReadPin(BTN_GPIO_Port, BTN_Pin)) == 1) { test = 1 ; }
+	}
+}
+//=========================================================
+static void check_keys(void) {
+
+
+	HAL_Delay(100);
+	// wait for press button key or touch screen
+	press_wait();
+	HAL_Delay(50);
+	// wait for releasse button key and touch screen
+	releasse_wait();
+	HAL_Delay(50);
+}
+//===============================================================================================
+static void print_data( int32_t data, char * member) {
 
  	  LCD_ClrScr(COLOR_565_BLACK);
 
+	  lcdSetCursor(20, 50);
+	  lcdPrintf("Matrix.");
+	  lcdPrintf(member);
 	  my_htoa32(idx , data);
 
 	  lcdSetCursor(20, 100);
 	  lcdPrintf((char *) idx);
-	  HAL_Delay(222);
-	  while((HAL_GPIO_ReadPin(LCDTP_IRQ_GPIO_Port, LCDTP_IRQ_Pin)) == 1);
+
+	  check_keys();
+
+}
+static void show_Matrix(void) {
+	lcdSetTextColor(0xffff, 0);
+	lcdSetTextFont(&Font24);
+
+	LCD_ClrScr(COLOR_565_BLACK);
+
+	lcdSetCursor(20, 50);
+	lcdPrintf("MATRIX ADDRESS:");
+
+	lcdSetCursor(20, 100);
+	my_htoa32(idx , (u32) &matrix);
+	lcdPrintf((char *) idx);
+
+
+	// wait for releasse touch screen and button key
+	releasse_wait();
+
+	// now wait for press touch screen or button key and releasse it
+	check_keys();
+
+	print_data(matrix.An, "An")  ;
+	print_data(matrix.Bn, "Bn")  ;
+	print_data(matrix.Cn, "Cn")  ;
+	print_data(matrix.Dn, "Dn")  ;
+	print_data(matrix.En, "En")  ;
+	print_data(matrix.Fn, "Fn")  ;
+	print_data(matrix.Divider, "Divider")  ;
+	LCD_ClrScr(COLOR_565_BLACK);
 }
 
 //***************************************************************************************************
@@ -487,94 +548,93 @@ static void print_data( int32_t data) {
 *******************************************************************************/
 void TouchPanel_Calibrate(void)
 {
-  uint8_t i;
-  Coordinate * Ptr;
-  uint8_t logic = 0; // condition to check timelapse
-  uint8_t test;
-  uint32_t tick1, tick2, tickcntr;
+	uint8_t i;
+	Coordinate * Ptr;
+	uint8_t logic = 0; // condition to check timelapse
+	uint8_t test;
+	uint32_t tick1, tick2, tickcntr;
 
 
-  TP_CS(0);
-  HAL_Delay(10);
-  TP_CS(1);
-  HAL_Delay(10);
+	TP_CS(0);
+	HAL_Delay(10);
+	TP_CS(1);
+	HAL_Delay(10);
 
 
 
-  for(i=0;i<3;i++)
-  {
-	  lcdSetTextFont(&Font12);
-	  LCD_ClrScr(COLOR_565_BLACK);
-	  lcdSetTextColor(COLOR_565_WHITE, COLOR_565_BLACK );
-	  lcdSetCursor(5,5);
-	  lcdPrintf("        Touch crosshair to calibrate");
-	  lcdSetTextFont(&Font24);
-	  lcdSetCursor(0,95);
-	  lcdPrintf("   ILI9341 LCD");
-	  HAL_Delay(20);
-	  DrawCross(DisplaySample[i].x,DisplaySample[i].y);
-	  test = 0;
-	  tickcntr = 0;
-	  tick1 = HAL_GetTick();
+	for(i=0;i<3;i++)
+	{
+		lcdSetTextFont(&Font12);
+		LCD_ClrScr(COLOR_565_BLACK);
+		lcdSetTextColor(COLOR_565_WHITE, COLOR_565_BLACK );
+		lcdSetCursor(5,5);
+		lcdPrintf("        Touch crosshair to calibrate");
+		lcdSetTextFont(&Font24);
+		lcdSetCursor(0,95);
+		lcdPrintf("   ILI9341 LCD");
+		HAL_Delay(20);
+		DrawCross(DisplaySample[i].x,DisplaySample[i].y);
+		test = 0;
+		tickcntr = 0;
+		tick1 = HAL_GetTick();
 
-	  while(test == 0){
-		  if(HAL_GPIO_ReadPin(LCDTP_IRQ_GPIO_Port, LCDTP_IRQ_Pin) == 0) { // do calibrate
-			  logic =1;
-			  test = 1;
-		  }
-		  if(logic == 0) {
-			  while((tick2 = HAL_GetTick()) == tick1){;}
-			  tick1 = tick2;
-			  tickcntr++;
-			  if(tickcntr > 600) { return;} // wait time is over
-		  }
-	  }
-    logic = 1;
+		while(test == 0){
+			if(HAL_GPIO_ReadPin(LCDTP_IRQ_GPIO_Port, LCDTP_IRQ_Pin) == 0) { // do calibrate
+				logic =1;
+				test = 1;
+			}
+			if(logic == 0) {
+				while((tick2 = HAL_GetTick()) == tick1){;}
+				tick1 = tick2;
+				tickcntr++;
+				if(tickcntr > 600) { return;} // wait time is over
+			}
+		}
+		logic = 1;
 
-    HAL_Delay(2000); // debounce tactic
-    do
-    {
-      Ptr=Read_Ads7846();
-    }
-    while( Ptr == (void*)0 );
-    ScreenSample[i].x= Ptr->x; ScreenSample[i].y= Ptr->y;
-    LCD_ClrScr(COLOR_565_BLACK);
+		HAL_Delay(2000); // debounce tactic
+		do
+		{
+			Ptr=Read_Ads7846();
+		}
+		while( Ptr == (void*)0 );
+		ScreenSample[i].x= Ptr->x; ScreenSample[i].y= Ptr->y;
 
-    HAL_Delay(2000); // debounce tactic
-  }
-  setCalibrationMatrix( &DisplaySample[0],&ScreenSample[0],&matrix );
-  LCD_ClrScr(COLOR_565_BLACK);
+		LCD_ClrScr(COLOR_565_BLACK);
+
+		my_utoa(idx, (uint32_t) Ptr->x);
+		lcdSetTextFont(&Font24);
+		lcdSetCursor(0,70);
+		lcdPrintf("ADC->X = ");
+		lcdPrintf((char*) idx);
+		lcdPrintf("\nADC->Y = ");
+		my_utoa(idx, (uint32_t) Ptr->y);
+		lcdPrintf((char*) idx);
+
+		releasse_wait();
+		lcdPrintf("\n\n\n  Press TS...");
+
+		press_wait();
+		releasse_wait();
+
+	}
+	setCalibrationMatrix( &DisplaySample[0],&ScreenSample[0],&matrix );
+	LCD_ClrScr(COLOR_565_BLACK);
 
 
 //===================================================================================================
 //===================================================================================================
 
-  if(HAL_GPIO_ReadPin(LCDTP_IRQ_GPIO_Port, LCDTP_IRQ_Pin) == 0) { // IF TOUCH IS PRESSED THAN SHOW MATRIX VALUES
-	  lcdSetTextColor(0xffff, 0);
-	  lcdSetTextFont(&Font24);
+	i = 0;
 
-	  LCD_ClrScr(COLOR_565_BLACK);
+	HAL_Delay(1000); // chance for press TS or BTN for Matrix show
 
-	  lcdSetCursor(20, 50);
-	  lcdPrintf("MATRIX ADDRESS:");
+	// test for pressed BTN key or TS (Touch Screen)
+	if(HAL_GPIO_ReadPin(LCDTP_IRQ_GPIO_Port, LCDTP_IRQ_Pin) == 0) { i = 1;}
+	if(HAL_GPIO_ReadPin(BTN_GPIO_Port, BTN_Pin) == 1) { i = 1;}
 
-	  lcdSetCursor(20, 100);
-	  my_htoa32(idx , (u32) &matrix);
-	  lcdPrintf((char *) idx);
-	  while(HAL_GPIO_ReadPin(LCDTP_IRQ_GPIO_Port, LCDTP_IRQ_Pin) == 0) {;} // wait for releasse touch screen
-	  HAL_Delay(200);
-	  while((HAL_GPIO_ReadPin(LCDTP_IRQ_GPIO_Port, LCDTP_IRQ_Pin)) == 1);
-
-
-	  print_data(matrix.An)  ;
-	  print_data(matrix.Bn)  ;
-	  print_data(matrix.Cn)  ;
-	  print_data(matrix.Dn)  ;
-	  print_data(matrix.En)  ;
-	  print_data(matrix.Fn)  ;
-	  print_data(matrix.Divider)  ;
-	  LCD_ClrScr(COLOR_565_BLACK);
-  }
+	// IF TOUCH or BTN KEY WAS PRESSED THAN SHOW MATRIX VALUES
+	if(i == 1) { show_Matrix(); }
 
 
 //===================================================================================================
@@ -630,20 +690,28 @@ static void init_paint(void) {
 	BSP_LCD_DrawHLine(  1, 232, 320);
 
 }
-void paint_proc(void) {
-
-    init_paint();
-
+static void TS_banner(void) {
     lcdSetTextFont(&Font12);
-
 	lcdSetCursor(5,5);
 	lcdPrintf( "Touch Panel Paint" );
 	lcdSetCursor(5,20);
 	lcdPrintf( "Example");
+}
+//================================
+static void repaint_Matrix(void) {
+	show_Matrix();
+	init_paint();
+	TS_banner();
+}
+//======================================
+void paint_proc(void) {
 
+    init_paint();
+    TS_banner();
 
 	while (1)
 	{
+		if(HAL_GPIO_ReadPin(BTN_GPIO_Port, BTN_Pin) == 1) {repaint_Matrix();}
 
 		getDisplayPoint(&display, Read_Ads7846(), &matrix );
 		if(((display.y < 190) && (display.y >= 2)))
